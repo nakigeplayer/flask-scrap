@@ -6,25 +6,22 @@ from selenium_scraper import scrape_nhentai_with_selenium
 
 app = Flask(__name__)
 
-# Descargar Chrome y Chromedriver al iniciar
 def download_file(url, filename):
     print(f"Descargando {filename}...")
     try:
-        response = requests.get(url, stream=True, timeout=30)
+        response = requests.get(url, stream=True)
         response.raise_for_status()
         with open(filename, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
         print(f"Descarga completada: {filename}")
-        # Hacer ejecutable el chromedriver
         if "chromedriver" in filename:
             os.chmod(filename, 0o755)
             print(f"Permisos ejecutables asignados a {filename}")
     except Exception as e:
         print(f"Error descargando {filename}: {e}")
 
-# Verificar y descargar si no existen
 if not os.path.exists("selenium"):
     os.makedirs("selenium", exist_ok=True)
 
@@ -49,7 +46,9 @@ def nhentai_mirror():
         return jsonify({"error": "Parámetro 'q' (query) requerido"}), 400
     
     print(f"Buscando: '{search_term}' en página {page}")
+    
     results = scrape_nhentai_with_selenium(search_term, page)
+    
     print(f"Resultados encontrados: {len(results)}")
     
     return jsonify({
