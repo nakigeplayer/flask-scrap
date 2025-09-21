@@ -1,6 +1,6 @@
 import os
 import requests
-import subprocess
+import asyncio
 from flask import Flask, jsonify, request
 from selenium_scraper import scrape_nhentai_with_selenium
 
@@ -9,7 +9,7 @@ app = Flask(__name__)
 def download_file(url, filename):
     print(f"Descargando {filename}...")
     try:
-        response = requests.get(url, stream=True)
+        response = requests.get(url, stream=True, timeout=30)
         response.raise_for_status()
         with open(filename, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
@@ -47,16 +47,30 @@ def nhentai_mirror():
     
     print(f"Buscando: '{search_term}' en página {page}")
     
-    results = scrape_nhentai_with_selenium(search_term, page)
-    
-    print(f"Resultados encontrados: {len(results)}")
-    
-    return jsonify({
-        "search_term": search_term,
-        "page": page,
-        "results": results,
-        "count": len(results)
-    })
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        results = loop.run_until_complete(async_scrape_nhentai(search_term, page))
+        
+        print(f"Resultados encontrados: {len(results)}")
+        
+        return jsonify({
+            "search_term": search_term,
+            "page": page,
+            "results": results,
+            "count": len(results)
+        })
+    except Exception as e:
+        print(f"Error en el event loop: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        loop.close()
+
+async def async_scrape_nhentai(search_term, page):
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, scrape_nhentai_with_selenium, search_term, page)
+    return result
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
