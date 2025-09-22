@@ -18,7 +18,7 @@ CHROMEDRIVER_PATH = "selenium/chromedriver"
 def download_file(url, filename):
     print(f"Descargando {filename}...")
     try:
-        response = requests.get(url, stream=True, timeout=300)
+        response = requests.get(url, stream=True, timeout=30)
         response.raise_for_status()
         with open(filename, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
@@ -85,42 +85,36 @@ def scrape_nhentai_with_selenium(search_term, page=1):
         if "Just a moment" in page_source or "Verifying" in page_source or "Cloudflare" in page_source:
             print("Cloudflare detectado, esperando 15 segundos...")
             time.sleep(15)
-        
-        try:
-            print("Esperando elementos gallery...")
-            WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "gallery"))
-            )
-            print("Elementos gallery encontrados")
-        except Exception as e:
-            print(f"Timeout esperando galleries: {e}")
-            print("HTML de la página:", driver.page_source[:1000])
-            return []
-        
-        html_content = driver.page_source
-        soup = BeautifulSoup(html_content, 'html.parser')
+            page_source = driver.page_source
+
+        print("Buscando elementos gallery...")
+        soup = BeautifulSoup(page_source, 'html.parser')
         gallery_divs = soup.find_all('div', class_='gallery')
         
-        print(f"Encontrados {len(gallery_divs)} divs con clase gallery")
-        
         if not gallery_divs:
-            print("No se encontraron galleries, buscando cualquier div con data-tags...")
+            print("No se encontraron galleries con clase 'gallery', buscando alternativas...")
             gallery_divs = soup.find_all('div', {'data-tags': True})
             print(f"Encontrados {len(gallery_divs)} divs con data-tags")
         
         if not gallery_divs:
             print("No se encontraron galleries después de búsqueda alternativa")
+            print("HTML de la página (primeros 2000 caracteres):")
+            print(page_source[:2000])
             return []
         
+        print(f"Procesando {len(gallery_divs)} galleries encontrados")
         results = []
         
-        for gallery in gallery_divs:
+        for i, gallery in enumerate(gallery_divs):
             try:
+                print(f"Procesando gallery {i+1}/{len(gallery_divs)}")
                 data_tags = gallery.get('data-tags', '').split()
+                
                 link_tag = gallery.find('a', class_='cover')
                 if not link_tag:
                     link_tag = gallery.find('a')
                     if not link_tag:
+                        print(f"Gallery {i+1}: No se encontró enlace")
                         continue
                 
                 href = link_tag.get('href', '')
@@ -151,10 +145,10 @@ def scrape_nhentai_with_selenium(search_term, page=1):
                 }
                 
                 results.append(result)
-                print(f"Gallery procesado: {name}")
+                print(f"Gallery {i+1} procesado: {name}")
                 
             except Exception as e:
-                print(f"Error procesando gallery: {e}")
+                print(f"Error procesando gallery {i+1}: {e}")
                 continue
         
         print(f"Scraping completado. {len(results)} resultados obtenidos")
@@ -168,8 +162,8 @@ def scrape_nhentai_with_selenium(search_term, page=1):
         try:
             driver.quit()
             print("Driver cerrado")
-        except:
-            pass
+        except Exception as e:
+            print(f"Error cerrando driver: {e}")
 
 @app.route('/')
 def home():
@@ -183,17 +177,30 @@ def nhentai_mirror():
     if not search_term:
         return jsonify({"error": "Parámetro 'q' requerido"}), 400
     
-    print(f"Solicitud recibida: buscar '{search_term}' en página {page}")
+    print(f"=== INICIANDO REQUEST ===")
+    print(f"Búsqueda: '{search_term}'")
+    print(f"Página: {page}")
+    print(f"Esperando resultados...")
     
+    start_time = time.time()
     results = scrape_nhentai_with_selenium(search_term, page)
+    end_time = time.time()
     
-    print(f"Request completado. Enviando {len(results)} resultados")
+    print(f"=== REQUEST COMPLETADO ===")
+    print(f"Tiempo total: {end_time - start_time:.2f} segundos")
+    print(f"Resultados encontrados: {len(results)}")
+    
+    if results:
+        print("Primeros 3 resultados:")
+        for i, result in enumerate(results[:3]):
+            print(f"  {i+1}. {result['name']} - Código: {result['code']}")
     
     return jsonify({
         "search_term": search_term,
         "page": page,
         "results": results,
-        "count": len(results)
+        "count": len(results),
+        "time_elapsed": f"{end_time - start_time:.2f}s"
     })
 
 if __name__ == '__main__':
